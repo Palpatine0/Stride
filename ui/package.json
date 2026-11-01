@@ -1,0 +1,22 @@
+{
+  "name": "vpn-console-ui",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "lucide-react": "0.511.0",
+    "qrcode.react": "4.2.0",
+    "@fontsource/inter": "5.2.5",
+    "@fontsource/titillium-web": "5.2.5"
+  },
+  "devDependencies": {
+    "vite": "6.3.5"
+  }
+}
