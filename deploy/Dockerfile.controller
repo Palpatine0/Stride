@@ -1,0 +1,7 @@
+FROM docker:27-cli AS docker
+FROM python:3.12-slim
+ENV PYTHONDONTWRITEBYTECODE=1 PYTHONUNBUFFERED=1
+WORKDIR /app
+COPY --from=docker /usr/local/bin/docker /usr/local/bin/docker
+COPY api/ ./api/
+CMD ["python", "-m", "api.controller", "--apply"]

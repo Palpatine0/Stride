@@ -33,7 +33,7 @@ For Vite development, use `PUBLIC_URL=http://localhost:5173` for the API, regist
 ## Admin sign-in
 
 1. In Google Cloud, create a Web application OAuth client. Configure the consent screen and add your Google account as a test user if the app is in testing.
-2. Register the exact redirect URI `https://vpn.sethmccarthy.in/api/auth/callback` (and `http://localhost:5173/api/auth/callback` for development).
+2. Register the exact redirect URI `https://stride.sethmccarthy.in/api/auth/callback` (and `http://localhost:5173/api/auth/callback` for development).
 3. Set `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `ADMIN_EMAIL` in `.env`. Only that exact verified email is allowed.
 4. Enable a passkey or MFA on the Google account. The dashboard has no separate password database.
 
@@ -68,7 +68,7 @@ Use a Codex session permitted to access the local Docker socket, if your app/pol
 
 `deploy/Caddyfile` is an integration example for a host-based Caddy instance. First inspect the existing ingress and DNS. Do not start a second service on port 443 or replace the current VPN proxy. If the proxy is containerized, its loopback is not the host: use its existing host routing or an appropriately restricted shared network instead.
 
-Point `vpn.sethmccarthy.in` to the actual ingress, provision TLS, and proxy to the local API. A tunnel is also possible when the Mac has no reachable public address, but configure it against the existing network topology. Keep `/sub/*` reachable by Shadowrocket without browser login. Disable access-log capture of subscription URLs and query strings. Add request rate limits at the existing edge before public exposure. DNS/TLS are not configured by the source files alone.
+Point `stride.sethmccarthy.in` to the actual ingress, provision TLS, and proxy to the local API. A tunnel is also possible when the Mac has no reachable public address, but configure it against the existing network topology. Keep `/sub/*` reachable by Shadowrocket without browser login. Disable access-log capture of subscription URLs and query strings. Add request rate limits at the existing edge before public exposure. DNS/TLS are not configured by the source files alone.
 
 ## Verify
 

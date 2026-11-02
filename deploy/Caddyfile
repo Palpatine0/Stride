@@ -1,5 +1,5 @@
 # Integrate this into the existing reverse proxy; do not start a competing port-443 listener.
-vpn.sethmccarthy.in {
+stride.sethmccarthy.in {
     encode gzip
     header Strict-Transport-Security "max-age=31536000"
     # Intentionally omit access logging: /sub URLs contain bearer credentials.

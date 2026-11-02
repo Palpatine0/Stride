@@ -1,0 +1,19 @@
+services:
+  tunnel:
+    image: cloudflare/cloudflared:2026.10.0
+    container_name: stride_tunnel
+    restart: unless-stopped
+    command: tunnel --no-autoupdate run --token-file /run/secrets/cloudflare_token
+    secrets:
+      - cloudflare_token
+    depends_on:
+      web:
+        condition: service_healthy
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+
+secrets:
+  cloudflare_token:
+    file: ./data/cloudflare-token

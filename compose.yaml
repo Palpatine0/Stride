@@ -1,0 +1,28 @@
+name: stride
+services:
+  web:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PUBLIC_URL: https://stride.sethmccarthy.in
+      BIND_HOST: 0.0.0.0
+      PORT: "8092"
+      DATABASE_PATH: /data/vpn.sqlite3
+    ports:
+      - "127.0.0.1:8093:8092"
+    volumes:
+      - console_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
+    healthcheck:
+      test: [CMD, python, -c, "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8092/api/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+volumes:
+  console_data:

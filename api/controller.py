@@ -8,12 +8,21 @@ import os
 import secrets
 import shutil
 import subprocess
-import tempfile
 import time
 import uuid
 from pathlib import Path
 
 from .store import Store
+
+
+def failure_message(error):
+    """Keep credentials out of logs while retaining actionable failure details."""
+    if isinstance(error, OSError):
+        filename = Path(error.filename).name if error.filename else 'local operation'
+        return '{}: {} (errno {}).'.format(type(error).__name__, filename, error.errno)
+    if isinstance(error, (ValueError, RuntimeError)):
+        return str(error)
+    return 'Controller failed: {}.'.format(type(error).__name__)
 
 
 def render_config(original, users):
@@ -52,8 +61,33 @@ class Controller:
         if not self.docker:
             raise RuntimeError('Docker CLI is not on PATH.')
 
-    def command(self, *args):
-        return subprocess.run([self.docker,*args],check=True,capture_output=True,text=True,timeout=45).stdout
+    def command(self, *args, input_data=None):
+        operation = 'docker '+args[0]
+        if args[0] == 'exec':
+            # Only fixed executable/subcommand names; never include config or credentials.
+            offset = 3 if args[1] == '-i' else 2
+            operation += ' '+ ' '.join(args[offset:offset+2])
+        try:
+            return subprocess.run([self.docker,*args],input=input_data,check=True,capture_output=True,text=True,timeout=45).stdout
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(operation+' timed out after 45 seconds.') from None
+        except subprocess.CalledProcessError as error:
+            diagnostic = (error.stderr or '').lower()
+            reason = 'Command failed; inspect the VPN container locally for details.'
+            for marker, explanation in (
+                ('permission denied', 'Permission denied accessing Docker or a mounted file.'),
+                ('client version', 'Docker client/server API version mismatch.'),
+                ('no such container', 'Configured Xray container does not exist.'),
+                ('is not running', 'Xray container is not running.'),
+                ('executable file not found', 'Required executable is missing in the Xray container.'),
+                ('read-only file system', 'The target filesystem is read-only.'),
+                ('cannot connect to the docker daemon', 'Docker daemon is unreachable.'),
+                ('connection refused', 'The requested service is not listening.'),
+            ):
+                if marker in diagnostic:
+                    reason = explanation
+                    break
+            raise RuntimeError('{} exited {}. {}'.format(operation,error.returncode,reason)) from None
 
     def collect(self):
         generation = self.command('inspect','--format','{{.State.StartedAt}}',self.container).strip()
@@ -83,8 +117,8 @@ class Controller:
         stats_error = None
         try:
             self.collect()
-        except Exception:
-            stats_error = 'Traffic collection failed. Check Docker access and the Xray stats API.'
+        except Exception as error:
+            stats_error = 'Traffic collection failed. '+failure_message(error)
         revision,users = self.store.snapshot()
         original = self.path.read_bytes()
         config_hash = hashlib.sha256(original).hexdigest()
@@ -92,15 +126,10 @@ class Controller:
             if meta.get('config_hash') and meta['config_hash'] != config_hash:
                 raise RuntimeError('Xray config changed outside this app. Review it before clearing config_hash in the database.')
             new = (json.dumps(render_config(json.loads(original),users),indent=2)+'\n').encode()
-            remote = '/tmp/vpn-admin-validate-'+secrets.token_hex(8)+'.json'
-            with tempfile.NamedTemporaryFile(suffix='.json') as candidate:
-                candidate.write(new)
-                candidate.flush()
-                self.command('cp',candidate.name,self.container+':'+remote)
-            try:
-                self.command('exec',self.container,'xray','run','-test','-config',remote)
-            finally:
-                self.command('exec',self.container,'rm','-f',remote)
+            # Minimal Xray images have no shell or rm. Validate over stdin so no
+            # temporary credentials or cleanup commands are needed in the container.
+            self.command('exec','-i',self.container,'xray','run','-test',
+                         '-format','json','-config','stdin:',input_data=new.decode())
             backup = self.path.with_name(self.path.name+'.vpn-admin-backup-'+str(time.time_ns()))
             backup.write_bytes(original)
             backup.chmod(0o600)
@@ -153,7 +182,7 @@ def main():
             controller.tick()
         except Exception as error:
             # Do not persist subprocess output: Xray diagnostics can contain credentials.
-            message = str(error) if isinstance(error,(ValueError,RuntimeError)) else 'Controller failed. Check Docker and config permissions.'
+            message = failure_message(error)
             with store.connect() as db:
                 store.set_meta(db,'error',message)
             print(message,flush=True)

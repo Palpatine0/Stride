@@ -6,7 +6,7 @@ The supplied design reference is saved verbatim in DESIGN-jobright.md. Its mint 
 
 ## Goal
 
-An administrator at `vpn.sethmccarthy.in` creates and manages individual Shadowrocket subscriptions, assigns names and tags, and monitors recorded upload/download traffic. Source layout is `/ui` (React) and `/api` (Python API and local Docker controller).
+An administrator at `stride.sethmccarthy.in` creates and manages individual Shadowrocket subscriptions, assigns names and tags, and monitors recorded upload/download traffic. Source layout is `/ui` (React) and `/api` (Python API and local Docker controller).
 
 ## Verified local configuration
 
@@ -32,7 +32,7 @@ Opaque admin sessions are hashed in SQLite, expire after 12 hours, and use HttpO
 - Python 3.9+ standard-library HTTP API, deployed only behind a TLS reverse proxy. For a larger or multi-admin deployment, replace the lightweight HTTP server with a hardened application server and add edge rate limits. The current scope is one private administrator and a small personal VPN.
 - SQLite in WAL mode, with restrictive filesystem permissions, user metadata, bearer subscriptions, hashed sessions, audit events, cumulative counters, and UTC daily aggregates.
 - A separate host controller holds Docker access. It has no HTTP listener. It watches the shared database, validates generated Xray configuration, saves a protected backup, applies changes, and restarts Xray. Only one controller can run, enforced by a filesystem lock.
-- Existing reverse proxy handles HTTPS for `vpn.sethmccarthy.in`. The API binds to loopback. The VPN's existing WebSocket ingress remains separate from dashboard routing.
+- Existing reverse proxy handles HTTPS for `stride.sethmccarthy.in`. The API binds to loopback. The VPN's existing WebSocket ingress remains separate from dashboard routing.
 
 ## Traffic accounting and persistence
 

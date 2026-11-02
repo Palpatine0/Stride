@@ -130,5 +130,6 @@ class Store:
 
 
 def connection_uri(user, host, port, ws_path):
-    query = urlencode({'encryption':'none', 'security':'tls', 'type':'ws', 'host':host, 'sni':host, 'path':ws_path})
+    # Preserve the ALPN setting from the existing working Shadowrocket profiles.
+    query = urlencode({'encryption':'none', 'security':'tls', 'type':'ws', 'host':host, 'sni':host, 'path':ws_path, 'alpn':'http/1.1'})
     return 'vless://{}@{}:{}?{}#{}'.format(user['credential'], host, port, query, quote(user['name'], safe=''))

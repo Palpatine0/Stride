@@ -1,12 +1,34 @@
 import json
 import tempfile
 import unittest
+import subprocess
+from unittest.mock import patch
 from pathlib import Path
+from urllib.parse import parse_qs, urlsplit
 from api.store import Store, connection_uri
-from api.controller import render_config
+from api.controller import Controller, failure_message, render_config
 
 
 class CoreTests(unittest.TestCase):
+    def test_docker_error_identifies_operation_without_leaking_stderr(self):
+        controller = Controller.__new__(Controller)
+        controller.docker = '/usr/bin/docker'
+        error = subprocess.CalledProcessError(1, ['docker'], stderr='permission denied secret-user-credential')
+        with patch('api.controller.subprocess.run', side_effect=error):
+            with self.assertRaises(RuntimeError) as caught:
+                controller.command('cp', '/tmp/private-config.json', 'vpn:/tmp/config.json')
+        message = str(caught.exception)
+        self.assertIn('docker cp exited 1', message)
+        self.assertIn('Permission denied', message)
+        self.assertNotIn('secret-user-credential', message)
+        self.assertNotIn('private-config', message)
+
+    def test_filesystem_error_identifies_file_and_errno(self):
+        message = failure_message(PermissionError(13, 'Permission denied', '/private/xray.json'))
+        self.assertIn('xray.json', message)
+        self.assertIn('errno 13', message)
+        self.assertNotIn('/private/', message)
+
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
         self.store = Store(Path(self.temp.name)/'test.sqlite3')
@@ -14,6 +36,45 @@ class CoreTests(unittest.TestCase):
 
     def tearDown(self):
         self.temp.cleanup()
+
+    def controller_fixture(self):
+        path = Path(self.temp.name)/'xray.json'
+        path.write_text(json.dumps({'inbounds':[{'protocol':'vless',
+            'streamSettings':{'network':'ws'},'settings':{'clients':[{'id':'external'}]}}]}))
+        controller = Controller.__new__(Controller)
+        controller.store, controller.path, controller.container = self.store, path, 'vpn'
+        controller.docker = '/usr/bin/docker'
+        return controller
+
+    def test_apply_on_minimal_xray_image_without_copy_or_rm(self):
+        controller = self.controller_fixture()
+        original = controller.path.read_bytes()
+        def run(command, **kwargs):
+            if command[1:3] == ['exec', '-i']:
+                self.assertEqual(command[3:], ['vpn','xray','run','-test','-format','json','-config','stdin:'])
+                candidate = json.loads(kwargs['input'])
+                self.assertEqual(len(candidate['inbounds'][0]['settings']['clients']), 2)
+            elif command[1:] != ['restart', 'vpn']:
+                self.fail('Unexpected command: '+repr(command))
+            return subprocess.CompletedProcess(command, 0, stdout='')
+        with patch('api.controller.subprocess.run', side_effect=run) as calls, patch.object(controller, 'collect'):
+            controller.tick()
+        self.assertEqual(calls.call_count, 2)
+        self.assertEqual(self.store.meta()['applied'], self.store.meta()['revision'])
+        self.assertEqual(self.store.meta()['error'], '')
+        backups = list(controller.path.parent.glob('xray.json.vpn-admin-backup-*'))
+        self.assertEqual(backups[0].read_bytes(), original)
+
+    def test_invalid_candidate_does_not_modify_config_or_restart(self):
+        controller = self.controller_fixture()
+        original = controller.path.read_bytes()
+        error = subprocess.CalledProcessError(23, ['docker'], stderr='invalid config private-credential')
+        with patch('api.controller.subprocess.run', side_effect=error) as calls, patch.object(controller, 'collect'):
+            with self.assertRaisesRegex(RuntimeError, 'docker exec xray run exited 23'):
+                controller.tick()
+        self.assertEqual(calls.call_count, 1)
+        self.assertEqual(controller.path.read_bytes(), original)
+        self.assertNotEqual(self.store.meta()['applied'], self.store.meta()['revision'])
 
     def test_rotation_changes_link_and_uuid(self):
         old = self.store.users()[0]
@@ -62,6 +123,7 @@ class CoreTests(unittest.TestCase):
         uri=connection_uri(user,'vpn.example.com',443,'/connect path')
         self.assertIn('security=tls',uri)
         self.assertIn('path=%2Fconnect+path',uri)
+        self.assertEqual(parse_qs(urlsplit(uri).query)['alpn'], ['http/1.1'])
         self.assertTrue(uri.endswith('#Alex%20%26%20family'))
 
 

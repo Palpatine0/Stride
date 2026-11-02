@@ -1,0 +1,13 @@
+**
+!api/
+!api/*.py
+!ui/
+!ui/package.json
+!ui/package-lock.json
+!ui/index.html
+!ui/vite.config.js
+!ui/src/
+!ui/src/**
+!Dockerfile
+!deploy/
+!deploy/Dockerfile.controller
