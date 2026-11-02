@@ -25,7 +25,15 @@ def failure_message(error):
     return 'Controller failed: {}.'.format(type(error).__name__)
 
 
-def render_config(original, users):
+def credential_key(value):
+    # Xray accepts UUIDs irrespective of textual case; imports canonicalize them.
+    try:
+        return str(uuid.UUID(value))
+    except (ValueError, AttributeError, TypeError):
+        return value
+
+
+def render_config(original, users, revoked_credentials=()):
     config = copy.deepcopy(original)
     inbound = [i for i in config.get('inbounds',[]) if i.get('protocol')=='vless']
     if len(inbound) != 1:
@@ -33,10 +41,10 @@ def render_config(original, users):
     inbound = inbound[0]
     if inbound.get('streamSettings',{}).get('network') != 'ws':
         raise ValueError('This adapter supports the existing VLESS WebSocket server only.')
-    managed_ids = {u['credential'] for u in users}
+    managed_ids = {credential_key(u['credential']) for u in users} | {credential_key(c) for c in revoked_credentials}
     clients = inbound.setdefault('settings',{}).get('clients',[])
-    # Preserve unmanaged clients, but replace our own and explicitly imported clients.
-    clients = [c for c in clients if not c.get('email','').endswith('@vpn-admin.local') and c.get('id') not in managed_ids]
+    # Preserve unmanaged clients, but remove managed, imported, and explicitly revoked IDs.
+    clients = [c for c in clients if not c.get('email','').endswith('@vpn-admin.local') and credential_key(c.get('id')) not in managed_ids]
     clients += [{'id':u['credential'],'email':u['id']+'@vpn-admin.local','level':100} for u in users if u['enabled']]
     inbound['settings']['clients'] = clients
     config.setdefault('stats',{})
@@ -104,7 +112,9 @@ class Controller:
             db.execute('BEGIN IMMEDIATE')
             for index, client in enumerate(inbound[0].get('settings',{}).get('clients',[]),1):
                 credential = str(uuid.UUID(client['id']))
-                if client.get('email','').endswith('@vpn-admin.local') or db.execute('SELECT 1 FROM users WHERE credential=?',(credential,)).fetchone():
+                if (client.get('email','').endswith('@vpn-admin.local')
+                        or db.execute('SELECT 1 FROM users WHERE credential=?',(credential,)).fetchone()
+                        or db.execute('SELECT 1 FROM revoked_credentials WHERE credential=?',(credential,)).fetchone()):
                     continue
                 uid = str(uuid.uuid4())
                 db.execute('INSERT INTO users(id,name,tags,credential,token,created) VALUES(?,?,?,?,?,?)',
@@ -119,13 +129,13 @@ class Controller:
             self.collect()
         except Exception as error:
             stats_error = 'Traffic collection failed. '+failure_message(error)
-        revision,users = self.store.snapshot()
+        revision,users,revoked = self.store.snapshot()
         original = self.path.read_bytes()
         config_hash = hashlib.sha256(original).hexdigest()
         if revision != meta['applied'] or meta.get('config_hash') != config_hash:
             if meta.get('config_hash') and meta['config_hash'] != config_hash:
                 raise RuntimeError('Xray config changed outside this app. Review it before clearing config_hash in the database.')
-            new = (json.dumps(render_config(json.loads(original),users),indent=2)+'\n').encode()
+            new = (json.dumps(render_config(json.loads(original),users,revoked),indent=2)+'\n').encode()
             # Minimal Xray images have no shell or rm. Validate over stdin so no
             # temporary credentials or cleanup commands are needed in the container.
             self.command('exec','-i',self.container,'xray','run','-test',

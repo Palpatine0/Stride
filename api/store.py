@@ -33,6 +33,7 @@ class Store:
                 CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, email TEXT, expires INTEGER);
                 CREATE TABLE IF NOT EXISTS oauth (state TEXT PRIMARY KEY, verifier TEXT, expires INTEGER);
                 CREATE TABLE IF NOT EXISTS counters (name TEXT PRIMARY KEY, value INTEGER, generation TEXT);
+                CREATE TABLE IF NOT EXISTS revoked_credentials (credential TEXT PRIMARY KEY);
                 CREATE TABLE IF NOT EXISTS daily (day TEXT, user_id TEXT, upload INTEGER DEFAULT 0,
                     download INTEGER DEFAULT 0, PRIMARY KEY(day,user_id));
                 CREATE TABLE IF NOT EXISTS audit (id INTEGER PRIMARY KEY, time INTEGER, action TEXT, user_id TEXT);
@@ -86,8 +87,19 @@ class Store:
                 elif action == 'toggle':
                     db.execute('UPDATE users SET enabled=1-enabled WHERE id=?', (user_id,))
                 elif action == 'rotate':
+                    # An imported UUID may still be untagged until the first sync.
+                    db.execute('INSERT OR IGNORE INTO revoked_credentials VALUES (?)', (row['credential'],))
                     db.execute('UPDATE users SET token=?,credential=? WHERE id=?',
                                (secrets.token_urlsafe(32), str(uuid.uuid4()), user_id))
+                elif action == 'delete':
+                    # Remove the bearer link and usage in the same transaction.
+                    # Keep its UUID revoked even if an imported client has not synced yet.
+                    db.execute('INSERT OR IGNORE INTO revoked_credentials VALUES (?)', (row['credential'],))
+                    db.execute('DELETE FROM daily WHERE user_id=?', (user_id,))
+                    counters = ['user>>>'+user_id+'@vpn-admin.local>>>traffic>>>'+direction
+                                for direction in ('uplink', 'downlink')]
+                    db.executemany('DELETE FROM counters WHERE name=?', [(name,) for name in counters])
+                    db.execute('DELETE FROM users WHERE id=?', (user_id,))
                 else:
                     raise ValueError('Unknown action.')
             # Editing labels does not interrupt VPN connections.
@@ -100,7 +112,9 @@ class Store:
         with self.connect() as db:
             db.execute('BEGIN')
             revision = db.execute("SELECT value FROM meta WHERE key='revision'").fetchone()[0]
-            return revision, [dict(r) for r in db.execute('SELECT * FROM users')]
+            users = [dict(r) for r in db.execute('SELECT * FROM users')]
+            revoked = {r['credential'] for r in db.execute('SELECT credential FROM revoked_credentials')}
+            return revision, users, revoked
 
     def record_stats(self, stats, generation):
         now = int(time.time())

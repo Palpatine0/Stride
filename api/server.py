@@ -190,7 +190,7 @@ def handler_for(app):
                     uid = app.store.mutate('create',payload=payload)
                     return self.send(201,{'id':uid})
                 parts = path.strip('/').split('/')
-                if len(parts)==4 and parts[:2]==['api','users'] and parts[3] in ('edit','toggle','rotate'):
+                if len(parts)==4 and parts[:2]==['api','users'] and parts[3] in ('edit','toggle','rotate','delete'):
                     app.store.mutate(parts[3],parts[2],payload)
                     return self.send(200,{'ok':True})
                 return self.send(404,{'error':'Endpoint not found.'})

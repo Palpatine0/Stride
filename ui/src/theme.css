@@ -12,3 +12,10 @@ dialog{border-radius:24px;box-shadow:0 16px 48px #0002;color:#000}dialog p{font-
 @media(max-width:1150px){.metric{padding:18px}.metric>strong{font-size:32px}.middle{grid-template-columns:1fr}.network-card{display:none}}
 @media(max-width:900px){nav button{font-size:0}.page-heading{padding:24px}.page-heading h1{font-size:32px}}
 @media(max-width:600px){.page-heading{padding:24px;flex-direction:column;border-radius:0 32px 32px 32px}.page-heading h1{font-size:32px}.page-heading .primary{font-size:14px;min-height:44px;padding:12px 20px}.page-heading .eyebrow{font-size:10px}.page-heading p{font-size:14px}.metric>div{font-size:12px}.metric small{font-size:11px}.panel-heading h2{font-size:20px}.badge{font-size:10px}.tabs button{font-size:12px}.empty h3{font-size:22px}.settings dl{font-size:12px}.chart-column>span{font-size:8px}.login h1{font-size:48px}}
+
+.subscription-actions{display:flex;align-items:center;gap:8px;white-space:nowrap}
+.secondary.delete-action{color:#b42318;border-color:#f2c4bf}
+.secondary.delete-action:hover{background:#fff1ef;border-color:#d92d20}
+.primary.delete-confirm{background:#b42318;border-color:#b42318;color:#fff}
+.primary.delete-confirm:hover{background:#912018;border-color:#912018}
+dialog strong{overflow-wrap:anywhere}
